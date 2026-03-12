@@ -122,7 +122,41 @@ const clearMemoryCache = () => {
   }
 }
 
+let inMemoryMongoServer = null
+
+
+const startInMemoryMongo = async () => {
+  try {
+    log('Starting in-memory MongoDB server...')
+    const { MongoMemoryServer } = await import('mongodb-memory-server')
+    inMemoryMongoServer = await MongoMemoryServer.create()
+    const uri = inMemoryMongoServer.getUri()
+    log(`In-memory MongoDB instance started at: ${uri}`)
+
+    process.on('exit', async () => {
+      if (inMemoryMongoServer) {
+        log('Stopping in-memory MongoDB server...')
+        await inMemoryMongoServer.stop()
+      }
+    })
+
+    return uri
+  } catch (err) {
+    log(`Failed to start in-memory MongoDB: ${err.message}`, true)
+    throw err
+  }
+}
+
+
 const connect = async (uri = 'mongodb://localhost:27017', validate = true) => {
+  if (uri === 'mongodb-memory-server') {
+    try {
+      uri = await startInMemoryMongo()
+    } catch (err) {
+      log(`Failed to start in-memory MongoDB: ${err.message}`, true)
+      return false
+    }
+  }
   try {
     log(`Connecting to MongoDB at: ${obfuscateMongoUri(uri)}`)
 
@@ -247,6 +281,7 @@ const extractDbNameFromConnectionString = (uri) => {
 }
 
 const resolveMongoUri = (uriOrAlias) => {
+  if (uriOrAlias === 'mongodb-memory-server') return uriOrAlias
   if (uriOrAlias.includes('://') || uriOrAlias.includes('@')) return uriOrAlias
 
   const uri = mongoUriMap.get(uriOrAlias.toLowerCase())
